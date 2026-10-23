@@ -7,7 +7,7 @@ const features = [
   {
     id: 'news',
     title: 'News For Me',
-    description: 'Injuries, updates, and news affecting your fantasy team.',
+    description: 'NFL news personalized to your fantasy roster.',
     icon: '📰',
   },
   {
@@ -48,7 +48,6 @@ function App() {
         if (!response.ok) {
           throw new Error('Backend unavailable')
         }
-
         return response.json()
       })
       .then((data) => {
@@ -58,9 +57,7 @@ function App() {
             : 'Unavailable 🔴'
         )
       })
-      .catch(() => {
-        setBackendStatus('Disconnected 🔴')
-      })
+      .catch(() => setBackendStatus('Disconnected 🔴'))
   }, [])
 
   async function fetchRoster() {
@@ -75,8 +72,7 @@ function App() {
         throw new Error('Unable to retrieve roster')
       }
 
-      const data = await response.json()
-      setRoster(data)
+      setRoster(await response.json())
     } catch (error) {
       setRosterError(error.message)
     } finally {
@@ -90,14 +86,15 @@ function App() {
     setNews(null)
 
     try {
-      const response = await fetch(`${API_URL}/api/news`)
+      const response = await fetch(
+        `${API_URL}/api/news/personalized`
+      )
 
       if (!response.ok) {
-        throw new Error('Unable to retrieve NFL news')
+        throw new Error('Unable to retrieve personalized NFL news')
       }
 
-      const data = await response.json()
-      setNews(data)
+      setNews(await response.json())
     } catch (error) {
       setNewsError(error.message)
     } finally {
@@ -108,19 +105,17 @@ function App() {
   function handleFeatureClick(feature) {
     setActiveFeature(feature)
 
-    if (feature.id === 'lineup') {
-      fetchRoster()
-    }
-
     if (feature.id === 'news') {
       fetchNews()
+    }
+
+    if (feature.id === 'lineup') {
+      fetchRoster()
     }
   }
 
   function formatDate(dateString) {
-    if (!dateString) {
-      return 'Date unavailable'
-    }
+    if (!dateString) return 'Date unavailable'
 
     const date = new Date(dateString)
 
@@ -131,13 +126,83 @@ function App() {
     return date.toLocaleString()
   }
 
+  function NewsCard({ article }) {
+    return (
+      <div
+        style={{
+          backgroundColor: '#162238',
+          border: '1px solid #2c405c',
+          borderRadius: '12px',
+          padding: '20px',
+          textAlign: 'left',
+        }}
+      >
+        <h3 style={{ marginTop: 0 }}>
+          {article.title}
+        </h3>
+
+        {article.matching_players?.length > 0 && (
+          <div style={{ marginBottom: '12px' }}>
+            {article.matching_players.map((player) => (
+              <span
+                key={player.name}
+                style={{
+                  display: 'inline-block',
+                  backgroundColor: '#164e63',
+                  color: '#67e8f9',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  marginRight: '8px',
+                  marginBottom: '6px',
+                  fontSize: '13px',
+                  fontWeight: 'bold',
+                }}
+              >
+                🏈 {player.name} ({player.position})
+              </span>
+            ))}
+          </div>
+        )}
+
+        <p
+          style={{
+            fontSize: '13px',
+            opacity: 0.7,
+            marginBottom: '12px',
+          }}
+        >
+          📰 {article.source} | 🕒{' '}
+          {formatDate(article.published)}
+        </p>
+
+        {article.description &&
+          article.description !== 'null' && (
+            <p style={{ lineHeight: '1.6' }}>
+              {article.description}
+            </p>
+          )}
+
+        <a
+          href={article.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: '#38bdf8',
+            fontWeight: 'bold',
+            textDecoration: 'none',
+          }}
+        >
+          Read Full Article →
+        </a>
+      </div>
+    )
+  }
+
   return (
     <div className="app">
       <header className="header">
         <h1>🏈 FantasyIQ AI</h1>
-
         <p>Your Fantasy Football Research Assistant</p>
-
         <p>Backend: {backendStatus}</p>
       </header>
 
@@ -160,7 +225,6 @@ function App() {
               </span>
 
               <h3>{feature.title}</h3>
-
               <p>{feature.description}</p>
             </button>
           ))}
@@ -172,12 +236,12 @@ function App() {
               {activeFeature.icon} {activeFeature.title}
             </h2>
 
-            {/* NEWS FOR ME */}
+            {/* PERSONALIZED NEWS */}
 
             {activeFeature.id === 'news' && (
               <div>
                 {newsLoading && (
-                  <p>🔄 Retrieving the latest NFL news...</p>
+                  <p>🔄 Checking NFL news against your roster...</p>
                 )}
 
                 {newsError && (
@@ -186,83 +250,69 @@ function App() {
 
                 {news && (
                   <>
+                    <h3>{news.team_name}</h3>
+
                     <p>
-                      Source: {news.source} | Articles:{' '}
-                      {news.articles.length}
+                      🏈 {news.roster_player_count} roster entries
+                      {' | '}
+                      📰 {news.total_articles} articles checked
                     </p>
 
                     {news.status === 'stale' && (
                       <p>
-                        ⚠️ Showing cached news because the
-                        provider is temporarily unavailable.
+                        ⚠️ ESPN is temporarily unavailable.
+                        Showing previously retrieved news.
                       </p>
                     )}
 
-                    <div
-                      style={{
-                        display: 'grid',
-                        gap: '16px',
-                        marginTop: '24px',
-                      }}
-                    >
-                      {news.articles.map((article, index) => (
+                    <section style={{ marginTop: '30px' }}>
+                      <h2>
+                        🚨 My Team News ({news.my_team_news_count})
+                      </h2>
+
+                      {news.my_team_news.length === 0 ? (
+                        <p>
+                          No direct mentions of your players in
+                          the articles currently checked.
+                        </p>
+                      ) : (
                         <div
-                          key={`${article.url}-${index}`}
                           style={{
-                            backgroundColor: '#162238',
-                            border: '1px solid #2c405c',
-                            borderRadius: '12px',
-                            padding: '20px',
-                            textAlign: 'left',
+                            display: 'grid',
+                            gap: '16px',
+                            marginTop: '16px',
                           }}
                         >
-                          <h3
-                            style={{
-                              marginTop: 0,
-                              marginBottom: '12px',
-                            }}
-                          >
-                            {article.title}
-                          </h3>
-
-                          <p
-                            style={{
-                              fontSize: '13px',
-                              opacity: 0.7,
-                              marginBottom: '12px',
-                            }}
-                          >
-                            📰 {article.source} | 🕒{' '}
-                            {formatDate(article.published)}
-                          </p>
-
-                          {article.description &&
-                            article.description !== 'null' && (
-                              <p
-                                style={{
-                                  lineHeight: '1.6',
-                                  marginBottom: '16px',
-                                }}
-                              >
-                                {article.description}
-                              </p>
-                            )}
-
-                          <a
-                            href={article.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                              color: '#38bdf8',
-                              fontWeight: 'bold',
-                              textDecoration: 'none',
-                            }}
-                          >
-                            Read Full Article →
-                          </a>
+                          {news.my_team_news.map((article, index) => (
+                            <NewsCard
+                              key={`${article.url}-${index}`}
+                              article={article}
+                            />
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </section>
+
+                    <section style={{ marginTop: '40px' }}>
+                      <h2>
+                        📰 Around the NFL ({news.around_the_nfl.length})
+                      </h2>
+
+                      <div
+                        style={{
+                          display: 'grid',
+                          gap: '16px',
+                          marginTop: '16px',
+                        }}
+                      >
+                        {news.around_the_nfl.map((article, index) => (
+                          <NewsCard
+                            key={`${article.url}-${index}`}
+                            article={article}
+                          />
+                        ))}
+                      </div>
+                    </section>
                   </>
                 )}
               </div>
@@ -272,9 +322,7 @@ function App() {
 
             {activeFeature.id === 'lineup' && (
               <>
-                {rosterLoading && (
-                  <p>Loading roster...</p>
-                )}
+                {rosterLoading && <p>Loading roster...</p>}
 
                 {rosterError && (
                   <p>❌ Error: {rosterError}</p>
@@ -284,7 +332,9 @@ function App() {
                   <>
                     <h3>{roster.team_name}</h3>
 
-                    <p>Data Source: {roster.data_source}</p>
+                    <p>
+                      Data Source: {roster.data_source}
+                    </p>
 
                     <table
                       style={{
@@ -296,15 +346,20 @@ function App() {
                     >
                       <thead>
                         <tr>
+                          <th>Slot</th>
                           <th>Position</th>
                           <th>Player</th>
-                          <th>Projected Points</th>
+                          <th>NFL Team</th>
                         </tr>
                       </thead>
 
                       <tbody>
                         {roster.players.map((player, index) => (
                           <tr key={index}>
+                            <td style={{ padding: '12px' }}>
+                              {player.slot}
+                            </td>
+
                             <td style={{ padding: '12px' }}>
                               {player.position}
                             </td>
@@ -314,7 +369,7 @@ function App() {
                             </td>
 
                             <td style={{ padding: '12px' }}>
-                              {player.projected_points}
+                              {player.nfl_team}
                             </td>
                           </tr>
                         ))}
@@ -325,13 +380,12 @@ function App() {
               </>
             )}
 
-            {/* FEATURES COMING LATER */}
+            {/* COMING SOON */}
 
             {activeFeature.id !== 'news' &&
               activeFeature.id !== 'lineup' && (
                 <p>
-                  This feature is coming soon! We'll connect
-                  it to real fantasy data later.
+                  This feature is coming soon!
                 </p>
               )}
 
@@ -350,7 +404,7 @@ function App() {
       </main>
 
       <footer>
-        <p>FantasyIQ AI | Development Version 0.3</p>
+        <p>FantasyIQ AI | Development Version 0.5</p>
       </footer>
     </div>
   )
